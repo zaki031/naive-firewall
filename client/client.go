@@ -5,44 +5,32 @@ import (
     "fmt"
     "net"
     "io"
+    "time"
+)
+var (
+    isBlockedBroadcast bool
+    conn net.Conn
 )
 
 func main() {
-    conn, err := net.Dial("tcp", "localhost:8080")
-
-    if err != nil {
-        fmt.Println(err)
-        return
+    err := connect();
+    if err!= nil{
+        println("Error coonecting to server: ", err)
     }
 
-    go func() {
-        for {
-            
-            buffer := make([]byte, 1024)
-            
-			_, err := conn.Read(buffer)
-            if err ==io.EOF{
-                fmt.Printf("Server disconected. Connection Closed\n")
-                return
-            }
-            if err != nil {
-                fmt.Println("Read error:", err)
-                return
-            }
-
-            clientCount := binary.BigEndian.Uint16(buffer[:2])
-            message := string(buffer[6:])
-           
-            fmt.Printf("\nConnected clients: %d\n", clientCount)
-            fmt.Printf("Received: %s\n", message)
-        }
-    }()
+    go Read()
 
     var message string
     var operation int;
     for {
-        fmt.Println("1- Broacast message\n2-Send to specific user\n3-Block user")
-        fmt.Scanf("%d",&operation);
+        fmt.Printf("1- Broacast message\n2-Send to specific user\n3-Block user\n");
+        if isBlockedBroadcast {
+                    fmt.Printf("4-Unblock broadcast\n");
+        } else {
+            fmt.Printf("4-Block broadcast\n");
+
+        }
+                fmt.Scanf("%d",&operation);
         switch operation{
         case 1:
             for{
@@ -90,9 +78,70 @@ func main() {
                 panic(err);
             }
             fmt.Printf("Client %d blocked succefully!\n", clientToBlock);
+        case 4:
+            msg := make([]byte, 1024);
+            binary.BigEndian.PutUint16(msg[2:4], 4);
+            if isBlockedBroadcast {
+                binary.BigEndian.PutUint16(msg[4:6], 0);
+
+            } else {
+                binary.BigEndian.PutUint16(msg[4:6], 1);
+
+            }
+            _, err := conn.Write(msg);
+            if err != nil{
+                fmt.Println("Erorr writing message", err);
+            }
         }   
+            
 
     }
 }
 
+func connect()error{
+    var err error;
+    conn , err = net.Dial("tcp", "localhost:8080");
+    if err != nil{
+        return err;
+    }
+    fmt.Println("Connected to server again !")
+    return nil;
+}
 
+
+func reconnect(){
+    ticker := time.NewTicker(10 * time.Second);
+    defer ticker.Stop();
+    for i := 0; i < 160; i+=20 {
+        <-ticker.C
+        err := connect();
+        if err == nil {
+            return
+        }
+    }
+}
+
+
+func Read(){
+    for {
+            
+        buffer := make([]byte, 1024)
+        
+        _, err := conn.Read(buffer)
+        if err ==io.EOF{
+            fmt.Printf("Server disconected. Connection Closed\n")
+            reconnect();
+            Read();
+        }
+        if err != nil {
+            fmt.Println("Read error:", err)
+            return
+        }
+
+        clientCount := binary.BigEndian.Uint16(buffer[:2])
+        message := string(buffer[6:])
+       
+        fmt.Printf("\nConnected clients: %d\n", clientCount)
+        fmt.Printf("Received: %s\n", message)
+    }
+}

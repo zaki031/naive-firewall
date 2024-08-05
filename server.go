@@ -8,16 +8,16 @@ import (
 	"io"
 )
 
-type client struct {
+type Client struct {
 	conn net.Conn
 	id   string
 	n int
-	blockedClients []client
-	brodcast bool
+	blockedClients []Client
+	isBroadcastBlocked bool
 
 }
 
-var connList = make([]client, 0)
+var connList = make([]Client, 0)
 
 func main() {
 	ln, err := net.Listen("tcp", ":8080")
@@ -31,19 +31,19 @@ func main() {
 			log.Println(err)
 			continue
 		}
-		connList = append(connList, client{conn: conn, n: len(connList) + 1})
+		connList = append(connList, Client{conn: conn, n: len(connList) + 1})
 		go handleConnection(connList[len(connList)-1])
 	}
 }
 
-func handleConnection(Client client) {
-	defer Client.conn.Close()
+func handleConnection(client Client) {
+	defer client.conn.Close()
 	for {
 		buf := make([]byte, 1024)
-		_, err := Client.conn.Read(buf)
+		_, err := client.conn.Read(buf)
 		if err ==io.EOF{
-			fmt.Printf("Client n %d disconected. Connection Closed\n", Client.n)
-			connList = append(connList[:Client.n-1], connList[Client.n:]...)
+			fmt.Printf("Client n %d disconected. Connection Closed\n", client.n)
+			connList = append(connList[:client.n-1], connList[client.n:]...)
 			return
 		} else if err != nil {
 			fmt.Println("Connection closed:", err)
@@ -55,89 +55,111 @@ func handleConnection(Client client) {
 		switch operation {
 		case 1:
 			fmt.Println("Broadcasting message...")
-			Broadcast(connList, buf, Client.conn)
+			Broadcast(buf, client)
 		case 2:
 			fmt.Println("Sending message to specific client...")
-			writeToSpecificClient(Client, buf)
+			writeToSpecificClient(client, buf)
 		case 3:
 			clientToBlock := binary.BigEndian.Uint16(buf[4:6]) -1
 			fmt.Println(clientToBlock)
-			fmt.Printf("Client n %d blocking client n %d...\n", Client.n, clientToBlock  +1 )
-			blockClient(Client, int(clientToBlock) );
+			fmt.Printf("Client n %d blocking client n %d...\n", client.n, clientToBlock  +1 )
+			blockClient(client, int(clientToBlock) );
+		case 4:
+			hh := buf[4:6];
+			if binary.BigEndian.Uint16(buf[4:6]) == 1{
+				connList[client.n-1].isBroadcastBlocked = true
+				fmt.Println("Broadcasts are blocked")
+				sendResponseMsg(connList[client.n-1],"Broadcasts are blocked");
+			} else { 
+				connList[client.n-1].isBroadcastBlocked = false
+				fmt.Println("Broadcasts are unblocked")
+			}
+			fmt.Println(hh);
 		default:
 			fmt.Println("Unknown operation:", operation)
 		}
+
 	}
 }
 
-func Broadcast(conns []client, msg []byte, iniConn net.Conn) {
-	clientCount := uint16(len(conns))
+func Broadcast(msg []byte, iniClient Client) {
+	clientCount := uint16(len(connList)) 
 	binary.BigEndian.PutUint16(msg[:2], clientCount)
-	
-	fmt.Printf("%s", msg[4:])
-	for _, client := range conns {
-		var isBlocked bool
-
-		for _ ,blockedClient := range client.blockedClients{
-
-			if iniConn == blockedClient.conn {
-				isBlocked = true;
-			}
-		}
-		if client.conn != iniConn  && !isBlocked{
+	iniConn := iniClient.conn
+	for _, client := range connList {
+		if client.conn != iniConn &&  !client.isBroadcastBlocked   && !isBlocked(iniClient, client){
 			_, err := client.conn.Write(msg)
 			if err != nil {
-				fmt.Println("Error writing to client:", err)
-			}
+				fmt.Println("Error broadcast:", err)
+				sendResponseMsg(iniClient, "Error happened while broacasting");
+			} 
 		}
 	}
 
 }
 
-func writeToSpecificClient(sender client, msg []byte) {
+func writeToSpecificClient(senderClient Client, msg []byte) {
 	clientCount := uint16(len(connList))
 	binary.BigEndian.PutUint16(msg[:2], clientCount)
 	user := binary.BigEndian.Uint16(msg[4:6])
 	ClientToSend:= connList[user-1];
-	var isBlocked bool;
-	for _, blockedClient := range ClientToSend.blockedClients{
-		if sender.conn == blockedClient.conn{
-			isBlocked = true;
-			break;
-		}
-	}
-
-
-	fmt.Println("Sending to user:", binary.BigEndian.Uint16(msg[4:6]))
-	if !isBlocked {
-		
 	
+	fmt.Printf("Client %d sending to client %d:", senderClient.n, user);
+	if !isBlocked(senderClient, ClientToSend){
 		conn := ClientToSend.conn
 		_, err := conn.Write(msg)
 		if err != nil {
 			fmt.Println("Error writing to specific client:", err)
+			sendResponseMsg(senderClient, "An error happened while sending your request");
+
+		} else {
+			sendResponseMsg(senderClient, "Sent successfully !");
 		}
 	} else{
 		fmt.Println("user is blocked")
-		blockedMsg := make([]byte, 1024)
-		copy(blockedMsg[4:],"This user has blocked you, your request cannot be sent")
-		sender.conn.Write(blockedMsg)
+		sendResponseMsg(senderClient, "This user has blocked you, your request cannot be sent");
 	}
 	} 
+		
 
-func blockClient(Client client,  clientToBlock int) {
-	returnMsg := make([]byte, 1024);
+	
+
+
+
+func sendResponseMsg(client Client,msg string){
+	responseMsg := make([]byte, 1024);
+	copy(responseMsg[6:], []byte(msg));
+	_, err := client.conn.Write(responseMsg);
+	if err != nil {
+		fmt.Println("Error sending response to client", err);
+	}
+}
+
+func blockClient(client Client,  clientToBlock int) {
 
 	if  clientToBlock < len(connList) {
-	connList[Client.n-1].blockedClients = append(connList[Client.n-1].blockedClients, connList[clientToBlock])
-	copy(returnMsg[6:], []byte(fmt.Sprintf("User %d blocked succesfuly!\n",  clientToBlock+1)))
-	fmt.Printf("Client n %d blocked client n %d\n", Client.n, clientToBlock  +1 )
+	connList[client.n-1].blockedClients = append(connList[client.n-1].blockedClients, connList[clientToBlock])
+	sendResponseMsg(client, fmt.Sprintf("User %d blocked succesfuly!\n",  clientToBlock+1))
+	fmt.Printf("Client n %d blocked client n %d\n", client.n, clientToBlock  +1 )
 
 	} else {
-		copy(returnMsg[6:], []byte(fmt.Sprintf("User %d was not blocked succesfuly!\n",  clientToBlock+1)))
-		fmt.Printf("Client n %d was not blocked client n %d\n", Client.n, clientToBlock  +1 )
+		sendResponseMsg(client, fmt.Sprintf("Client n %d was not blocked client n %d\n", client.n, clientToBlock  +1 ))
+		fmt.Printf("Client n %d was not blocked client n %d\n", client.n, clientToBlock  +1 )
 
 	}
-	Client.conn.Write(returnMsg);
 
+}
+
+
+func isBlocked(senderClient Client, RecieverCLient Client ) bool{
+
+	for _, blockedClient := range RecieverCLient.blockedClients{
+		if blockedClient.conn == senderClient.conn {
+			return true
+		}
 	}
+	return false
+
+}
+
+
