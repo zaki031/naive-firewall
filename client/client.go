@@ -31,10 +31,11 @@ func main() {
 	var message string
 	var operation int
 	fmt.Printf("1- Broacast message\n2-Send to specific user\n3-Block user\n4-Block/Unblock Broadcast\n")
-	fmt.Println("------------------------------------------------------------")
+	fmt.Printf("------------------------------------------------------------")
 
 	for {
-
+		fmt.Print("Enter operation : ")
+		fmt.Scanf("%d", &operation)
 		switch operation {
 		case 1:
 			for {
@@ -146,7 +147,7 @@ func Read() {
 			for _, client := range clientsString {
 
 				clientInfo := strings.Split(client, ":")
-				if len(clientInfo) == 2 {
+				if len(clientInfo) >= 2 {
 					clients = append(clients, Client{ip: clientInfo[0], port: clientInfo[1]})
 				}
 			}
