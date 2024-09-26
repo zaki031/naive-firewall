@@ -15,6 +15,10 @@ type Client struct {
 	port string
 	n    int
 }
+type Server struct {
+	ip   string
+	port int
+}
 
 var (
 	isBlockedBroadcast bool
@@ -30,18 +34,21 @@ const (
 )
 
 func main() {
-	err := connect()
+	server := Server{port: 8080}
+	fmt.Print("Enter the server's ip adress : ")
+	fmt.Scanf("%s", server.ip)
+	err := connect(&server)
 	if err != nil {
 		logWarning("Error connecting to server: %v", err)
 	}
 
-	go Read()
+	go Read(&server)
 
 	var message string
+	fmt.Printf("------------------------------------------------------------")
+	fmt.Printf("\n1- Broadcast message\n2- Send to specific user\n3- Block user\n4- Block/Unblock Broadcast\n5- Show blocked clients\n")
+	fmt.Printf("------------------------------------------------------------")
 	var operation int
-	fmt.Printf("------------------------------------------------------------")
-	fmt.Printf("1- Broadcast message\n2- Send to specific user\n3- Block user\n4- Block/Unblock Broadcast\n5- Show blocked clients")
-	fmt.Printf("------------------------------------------------------------")
 
 	for {
 		fmt.Print("Enter operation : ")
@@ -118,9 +125,9 @@ func main() {
 	}
 }
 
-func connect() error {
+func connect(server *Server) error {
 	var err error
-	conn, err = net.Dial("tcp", "192.168.100.57:8080")
+	conn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", server.ip, server.port))
 	if err != nil {
 		return err
 	}
@@ -128,28 +135,28 @@ func connect() error {
 	return nil
 }
 
-func reconnect() {
+func reconnect(server *Server) {
 	logInfo("Reconnecting to server...")
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for i := 0; i < 120; i += 20 {
 		<-ticker.C
-		err := connect()
+		err := connect(server)
 		if err == nil {
 			return
 		}
 	}
 }
 
-func Read() {
+func Read(server *Server) {
 	for {
 		buffer := make([]byte, 1024)
 
 		_, err := conn.Read(buffer)
 		if err == io.EOF {
 			logWarning("Server disconnected. Connection Closed")
-			reconnect()
-			Read()
+			reconnect(server)
+			Read(server)
 		}
 		if err != nil {
 			logWarning("Read error: %v", err)
