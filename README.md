@@ -17,3 +17,11 @@ It allows multiple clients to connect to the server and send messages either to 
 ```bash
 git clone https://github.com/yourusername/tcp-chat-app.git
 cd tcp-chat-app
+```
+## To-Do List
+
+- [ ] **Encryption**: Implement end-to-end encryption for secure communication
+- [ ] **User Authentication**: Add user login and authentication
+- [ ] **Rate Limiting**: Implement rate-limiting to prevent spamming
+
+
