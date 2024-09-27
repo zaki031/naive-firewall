@@ -15,7 +15,7 @@ It allows multiple clients to connect to the server and send messages either to 
 ### Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/tcp-chat-app.git
+git clone https://github.com/zaki031/naive-firewall.git
 cd tcp-chat-app
 ```
 ## To-Do List
